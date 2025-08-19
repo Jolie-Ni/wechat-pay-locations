@@ -60,6 +60,7 @@ export class GooglePlacesService {
         
         const nextResponse = await googleMapsClient.textSearch({
           params: {
+            query: searchQuery, // Required parameter for text search
             pagetoken: nextPageToken,
             key: process.env.GOOGLE_PLACES_API_KEY!,
           }
