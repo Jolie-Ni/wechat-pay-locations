@@ -69,18 +69,25 @@ export class MerchantService {
         chain_name: merchant.chain_name,
         payment_methods: merchant.payment_methods || ['wechat_pay']
       })
-      .select(`
-        id, name, address, phone, website, source, source_place_id, chain_name,
-        ST_X(coords::geometry) as lng, ST_Y(coords::geometry) as lat,
-        payment_methods, business_hours, last_synced_at, is_active, created_at, updated_at
-      `)
+      .select('*')
       .single();
 
     if (error) {
       throw new Error(`Failed to create merchant: ${error.message}`);
     }
 
-    return data;
+    if (!data) {
+      throw new Error('Failed to create merchant: No data returned');
+    }
+
+    // Transform the data to match our Merchant interface
+    const transformedData = {
+      ...data,
+      lat: merchant.lat,  // Use the original coordinates
+      lng: merchant.lng
+    };
+
+    return transformedData as Merchant;
   }
 
   // Upsert merchant from Google Places API

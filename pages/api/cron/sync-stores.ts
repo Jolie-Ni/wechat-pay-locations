@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { GooglePlacesService, CHAIN_CONFIGS } from '../../../lib/google-places';
 import { MerchantService } from '../../../lib/supabase';
+import { GooglePlaceResult } from '../../../types/merchant';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Verify this is a cron request (use a secret in production)
@@ -23,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`Syncing ${chainConfig.name}...`);
       
       try {
-        const allPlaces = [];
+        const allPlaces: GooglePlaceResult[] = [];
         
         // Search in each region for this chain
         for (const region of chainConfig.regions) {
