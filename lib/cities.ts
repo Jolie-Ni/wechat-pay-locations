@@ -106,3 +106,62 @@ export function getCityBounds(cityId: string) {
     maxLat: city.bounds.north
   };
 }
+
+export interface GeolocationResult {
+  success: boolean;
+  city?: City;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  error?: string;
+}
+
+export async function detectUserCity(): Promise<GeolocationResult> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({
+        success: false,
+        error: 'Geolocation is not supported by this browser'
+      });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude: lat, longitude: lng } = position.coords;
+        const detectedCity = getCityByCoordinates(lat, lng);
+        
+        resolve({
+          success: true,
+          city: detectedCity,
+          coordinates: { lat, lng }
+        });
+      },
+      (error) => {
+        let errorMessage = 'Unable to get your location';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied by user';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information is unavailable';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out';
+            break;
+        }
+        
+        resolve({
+          success: false,
+          error: errorMessage
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // 5 minutes
+      }
+    );
+  });
+}

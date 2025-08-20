@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Merchant } from '../types/merchant';
-import { SUPPORTED_CITIES, getCityById, getCityBounds, type City } from '../lib/cities';
+import { SUPPORTED_CITIES, getCityById, getCityBounds, detectUserCity, type City, type GeolocationResult } from '../lib/cities';
 
 // Google Maps component (client-side only)
 function MapComponent({ merchants, onBoundsChanged, selectedCity }: {
@@ -167,6 +167,9 @@ export default function HomePage() {
   const [selectedCityId, setSelectedCityId] = useState<string>('sf-bay-area');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [showUnsupportedModal, setShowUnsupportedModal] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const selectedCity = getCityById(selectedCityId);
 
@@ -207,6 +210,47 @@ export default function HomePage() {
       setLoading(false);
     }
   }, []);
+
+
+
+  // Auto-request location on initial load
+  useEffect(() => {
+    const requestLocationOnLoad = async () => {
+      // Small delay to let the page render first
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Only auto-request if user hasn't manually selected a different city
+      if (selectedCityId === 'sf-bay-area') {
+        setGeoLoading(true);
+        
+        try {
+          const result: GeolocationResult = await detectUserCity();
+          
+          if (result.success && result.coordinates) {
+            setUserLocation(result.coordinates);
+            
+            if (result.city) {
+              // User is in a supported city - switch to it
+              setSelectedCityId(result.city.id);
+            } else {
+              // User is in an unsupported city - show modal
+              setShowUnsupportedModal(true);
+            }
+          } else {
+            // Silently fail for auto-request, don't show error
+            console.log('Auto location request failed:', result.error);
+          }
+        } catch (err) {
+          // Silently fail for auto-request
+          console.log('Auto location request error:', err);
+        } finally {
+          setGeoLoading(false);
+        }
+      }
+    };
+
+    requestLocationOnLoad();
+  }, []); // Only run once on mount
 
   // Fetch merchants when city or chain changes
   useEffect(() => {
@@ -252,7 +296,13 @@ export default function HomePage() {
             
             {/* Status indicators */}
             <div className="flex items-center space-x-2 text-sm">
-              {loading && <span className="text-blue-600">Loading...</span>}
+              {geoLoading && (
+                <div className="flex items-center space-x-1 text-blue-600">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                  <span>Detecting location...</span>
+                </div>
+              )}
+              {loading && !geoLoading && <span className="text-blue-600">Loading...</span>}
               {error && <span className="text-red-600">Error: {error}</span>}
               <span className="text-gray-600">
                 {merchants.length} location{merchants.length !== 1 ? 's' : ''}
@@ -278,6 +328,64 @@ export default function HomePage() {
           Data includes major chains like 99 Ranch Market and H Mart, plus manually added locations.
         </p>
       </div>
+
+      {/* Unsupported City Modal */}
+      {showUnsupportedModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="flex-shrink-0">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">City Not Supported Yet</h3>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-600 mb-3">
+                We detected your location, but your city isn't supported yet. We're working hard to expand to more cities!
+              </p>
+              
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-sm text-blue-800 font-medium mb-2">Currently supported cities:</p>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  {SUPPORTED_CITIES.map(city => (
+                    <li key={city.id}>• {city.name}</li>
+                  ))}
+                </ul>
+              </div>
+              
+              {userLocation && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Your coordinates: {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+                </p>
+              )}
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowUnsupportedModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowUnsupportedModal(false);
+                  setSelectedCityId('sf-bay-area'); // Default to SF Bay Area
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Browse SF Bay Area
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
