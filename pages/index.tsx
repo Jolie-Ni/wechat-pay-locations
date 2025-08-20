@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Merchant } from '../types/merchant';
+import { SUPPORTED_CITIES, getCityById, getCityBounds, type City } from '../lib/cities';
 
 // Google Maps component (client-side only)
-function MapComponent({ merchants, onBoundsChanged }: {
+function MapComponent({ merchants, onBoundsChanged, selectedCity }: {
   merchants: Merchant[];
   onBoundsChanged: (bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => void;
+  selectedCity?: City;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
@@ -34,9 +36,12 @@ function MapComponent({ merchants, onBoundsChanged }: {
   useEffect(() => {
     // Initialize Google Map only after Google is loaded
     if (mapRef.current && !googleMapRef.current && isGoogleLoaded) {
+      const defaultCenter = selectedCity?.center || { lat: 37.7749, lng: -122.4194 };
+      const defaultZoom = selectedCity?.zoom || 10;
+      
       googleMapRef.current = new google.maps.Map(mapRef.current, {
-        center: { lat: 37.7749, lng: -122.4194 }, // SF Bay Area
-        zoom: 10,
+        center: defaultCenter,
+        zoom: defaultZoom,
         styles: [
           {
             featureType: 'poi',
@@ -64,6 +69,14 @@ function MapComponent({ merchants, onBoundsChanged }: {
               });
     }
   }, [onBoundsChanged, isGoogleLoaded]);
+
+  // Update map center and zoom when city changes
+  useEffect(() => {
+    if (googleMapRef.current && selectedCity) {
+      googleMapRef.current.setCenter(selectedCity.center);
+      googleMapRef.current.setZoom(selectedCity.zoom);
+    }
+  }, [selectedCity]);
 
   useEffect(() => {
     // Update markers when merchants change
@@ -151,16 +164,27 @@ const DynamicMapComponent = dynamic(() => Promise.resolve(MapComponent), {
 export default function HomePage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [selectedChain, setSelectedChain] = useState<string>('all');
+  const [selectedCityId, setSelectedCityId] = useState<string>('sf-bay-area');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMerchants = useCallback(async (bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => {
+  const selectedCity = getCityById(selectedCityId);
+
+  const fetchMerchants = useCallback(async (bounds?: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => {
     setLoading(true);
     setError(null);
     
     try {
+      // Use city bounds if available, otherwise use provided bounds
+      const searchBounds = bounds || (selectedCityId ? getCityBounds(selectedCityId) : null);
+      
+      if (!searchBounds) {
+        setError('No search area defined');
+        return;
+      }
+      
       const params = new URLSearchParams({
-        bbox: `${bounds.minLng},${bounds.minLat},${bounds.maxLng},${bounds.maxLat}`
+        bbox: `${searchBounds.minLng},${searchBounds.minLat},${searchBounds.maxLng},${searchBounds.maxLat}`
       });
       
       if (selectedChain !== 'all') {
@@ -181,7 +205,14 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedChain]);
+  }, [selectedChain, selectedCityId]);
+
+  // Fetch merchants when city changes
+  useEffect(() => {
+    if (selectedCityId) {
+      fetchMerchants();
+    }
+  }, [selectedCityId, fetchMerchants]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -191,6 +222,19 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold text-gray-900">WeChat Pay Locations</h1>
           
           <div className="flex items-center space-x-4">
+            {/* City Selector */}
+            <select
+              value={selectedCityId}
+              onChange={(e) => setSelectedCityId(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+            >
+              {SUPPORTED_CITIES.map(city => (
+                <option key={city.id} value={city.id}>
+                  {city.displayName}
+                </option>
+              ))}
+            </select>
+            
             {/* Chain Filter */}
             <select
               value={selectedChain}
@@ -219,6 +263,7 @@ export default function HomePage() {
         <DynamicMapComponent 
           merchants={merchants} 
           onBoundsChanged={fetchMerchants}
+          selectedCity={selectedCity}
         />
       </main>
       
