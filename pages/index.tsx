@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { Merchant } from '../types/merchant';
 
-// Google Maps component
+// Google Maps component (client-side only)
 function MapComponent({ merchants, onBoundsChanged }: {
   merchants: Merchant[];
   onBoundsChanged: (bounds: { minLng: number; minLat: number; maxLng: number; maxLat: number }) => void;
@@ -9,10 +10,30 @@ function MapComponent({ merchants, onBoundsChanged }: {
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
 
   useEffect(() => {
-    // Initialize Google Map
-    if (mapRef.current && !googleMapRef.current) {
+    // Check if Google Maps is already loaded
+    if (typeof google !== 'undefined' && google.maps) {
+      setIsGoogleLoaded(true);
+      return;
+    }
+
+    // Wait for Google Maps to be loaded by the script in _document.tsx
+    const checkGoogleMaps = () => {
+      if (typeof google !== 'undefined' && google.maps) {
+        setIsGoogleLoaded(true);
+      } else {
+        setTimeout(checkGoogleMaps, 100);
+      }
+    };
+    
+    checkGoogleMaps();
+  }, []);
+
+  useEffect(() => {
+    // Initialize Google Map only after Google is loaded
+    if (mapRef.current && !googleMapRef.current && isGoogleLoaded) {
       googleMapRef.current = new google.maps.Map(mapRef.current, {
         center: { lat: 37.7749, lng: -122.4194 }, // SF Bay Area
         zoom: 10,
@@ -40,13 +61,13 @@ function MapComponent({ merchants, onBoundsChanged }: {
             });
           }
         }
-      });
+              });
     }
-  }, [onBoundsChanged]);
+  }, [onBoundsChanged, isGoogleLoaded]);
 
   useEffect(() => {
     // Update markers when merchants change
-    if (googleMapRef.current) {
+    if (googleMapRef.current && isGoogleLoaded) {
       // Clear existing markers
       markersRef.current.forEach(marker => marker.setMap(null));
       markersRef.current = [];
@@ -98,10 +119,34 @@ function MapComponent({ merchants, onBoundsChanged }: {
         markersRef.current.push(marker);
       });
     }
-  }, [merchants]);
+  }, [merchants, isGoogleLoaded]);
+
+  if (!isGoogleLoaded) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-gray-600">Loading map...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <div ref={mapRef} className="w-full h-full" />;
 }
+
+// Create a client-side only version of MapComponent
+const DynamicMapComponent = dynamic(() => Promise.resolve(MapComponent), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+        <p className="text-gray-600">Loading map...</p>
+      </div>
+    </div>
+  )
+});
 
 export default function HomePage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
@@ -171,7 +216,7 @@ export default function HomePage() {
 
       {/* Map Container */}
       <main className="flex-1 relative">
-        <MapComponent 
+        <DynamicMapComponent 
           merchants={merchants} 
           onBoundsChanged={fetchMerchants}
         />
