@@ -180,6 +180,7 @@ export default function HomePage() {
       
       if (!searchBounds) {
         setError('No search area defined');
+        setLoading(false);
         return;
       }
       
@@ -205,14 +206,17 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedChain, selectedCityId]);
+  }, []);
 
-  // Fetch merchants when city changes
+  // Fetch merchants when city or chain changes
   useEffect(() => {
     if (selectedCityId) {
-      fetchMerchants();
+      const cityBounds = getCityBounds(selectedCityId);
+      if (cityBounds) {
+        fetchMerchants(cityBounds);
+      }
     }
-  }, [selectedCityId, fetchMerchants]);
+  }, [selectedCityId, selectedChain, fetchMerchants]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -262,7 +266,7 @@ export default function HomePage() {
       <main className="flex-1 relative">
         <DynamicMapComponent 
           merchants={merchants} 
-          onBoundsChanged={fetchMerchants}
+          onBoundsChanged={(bounds) => fetchMerchants(bounds)}
           selectedCity={selectedCity}
         />
       </main>
