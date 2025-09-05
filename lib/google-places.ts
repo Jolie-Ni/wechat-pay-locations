@@ -1,5 +1,7 @@
 import { Client } from '@googlemaps/google-maps-services-js';
 import { GooglePlaceResult } from '../types/merchant';
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
 
 if (!process.env.GOOGLE_PLACES_API_KEY) {
   throw new Error('Missing env.GOOGLE_PLACES_API_KEY');
@@ -10,7 +12,11 @@ const googleMapsClient = new Client({});
 export class GooglePlacesService {
   
   // Search for all locations of a specific chain
-  static async searchChainStores(chainName: string, region?: { lat: number; lng: number; radius: number }): Promise<GooglePlaceResult[]> {
+  static async searchChainStores(
+    chainName: string, 
+    region?: { lat: number; lng: number; radius: number },
+    cityId?: string // Optional: filter by specific city
+  ): Promise<GooglePlaceResult[]> {
     try {
       const searchParams: any = {
         params: {
@@ -32,25 +38,10 @@ export class GooglePlacesService {
         throw new Error(`Google Places API error: ${response.data.status}`);
       }
 
-      const places: GooglePlaceResult[] = response.data.results
-        .filter(place => 
-          !place.permanently_closed && 
-          place.business_status !== 'CLOSED_PERMANENTLY' &&
-          place.geometry?.location
-        )
-        .map(place => ({
-          place_id: place.place_id!,
-          name: place.name!,
-          formatted_address: place.formatted_address!,
-          geometry: {
-            location: {
-              lat: place.geometry!.location!.lat,
-              lng: place.geometry!.location!.lng
-            }
-          },
-          business_status: place.business_status,
-          permanently_closed: place.permanently_closed
-        }));
+      let places: GooglePlaceResult[] = GooglePlacesService.filterAndTransformPlaces(
+        response.data.results, 
+        chainName
+      );
 
       // Handle pagination if there are more results
       let nextPageToken = response.data.next_page_token;
@@ -67,30 +58,23 @@ export class GooglePlacesService {
         });
 
         if (nextResponse.data.status === 'OK') {
-          const nextPlaces = nextResponse.data.results
-            .filter(place => 
-              !place.permanently_closed && 
-              place.business_status !== 'CLOSED_PERMANENTLY' &&
-              place.geometry?.location
-            )
-            .map(place => ({
-              place_id: place.place_id!,
-              name: place.name!,
-              formatted_address: place.formatted_address!,
-              geometry: {
-                location: {
-                  lat: place.geometry!.location!.lat,
-                  lng: place.geometry!.location!.lng
-                }
-              },
-              business_status: place.business_status,
-              permanently_closed: place.permanently_closed
-            }));
+          const nextPlaces = GooglePlacesService.filterAndTransformPlaces(
+            nextResponse.data.results, 
+            chainName
+          );
 
           places.push(...nextPlaces);
           nextPageToken = nextResponse.data.next_page_token;
         } else {
           break;
+        }
+      }
+
+      // After getting places, filter by city bounds if cityId is provided
+      if (cityId) {
+        const city = SUPPORTED_CITIES.find(c => c.id === cityId);
+        if (city) {
+          places = filterPlacesByCity(places, city);
         }
       }
 
@@ -122,28 +106,52 @@ export class GooglePlacesService {
       throw error;
     }
   }
+
+  // Helper function to filter and transform Google Places results
+  private static filterAndTransformPlaces(places: any[], chainName: string): GooglePlaceResult[] {
+    return places
+      .filter(place => 
+        !place.permanently_closed && 
+        place.business_status !== 'CLOSED_PERMANENTLY' &&
+        place.geometry?.location
+      )
+      .filter(place => GooglePlacesService.isLikelyChainStore(place, chainName))
+      .map(place => ({
+        place_id: place.place_id!,
+        name: place.name!,
+        formatted_address: place.formatted_address!,
+        geometry: {
+          location: {
+            lat: place.geometry!.location!.lat,
+            lng: place.geometry!.location!.lng
+          }
+        },
+        business_status: place.business_status,
+        permanently_closed: place.permanently_closed
+      }));
+  }
+
+  // Add this generic method to GooglePlacesService
+  private static isLikelyChainStore(place: any, expectedChainName: string): boolean {
+    const placeName = place.name?.toLowerCase() || '';
+    const expectedName = expectedChainName.toLowerCase();
+    
+    return placeName.startsWith(expectedName);
+  }
 }
 
-// Chain configurations for syncing
+import { filterPlacesByCity, SUPPORTED_CITIES } from './cities';
+
+// Remove the old CHAIN_CONFIGS and replace with this:
 export const CHAIN_CONFIGS = [
   {
     name: '99 Ranch Market',
     searchQuery: '99 Ranch Market',
-    regions: [
-      { lat: 37.7749, lng: -122.4194, radius: 80000 }, // SF Bay Area
-      { lat: 34.0522, lng: -118.2437, radius: 80000 }, // Los Angeles
-      { lat: 47.6062, lng: -122.3321, radius: 50000 }, // Seattle
-      { lat: 40.7128, lng: -74.0060, radius: 50000 }   // New York
-    ]
-  },
-  {
-    name: 'H Mart',
-    searchQuery: 'H Mart',
-    regions: [
-      { lat: 37.7749, lng: -122.4194, radius: 80000 }, // SF Bay Area
-      { lat: 34.0522, lng: -118.2437, radius: 80000 }, // Los Angeles
-      { lat: 40.7128, lng: -74.0060, radius: 80000 },  // New York
-      { lat: 41.8781, lng: -87.6298, radius: 50000 }   // Chicago
-    ]
+    regions: SUPPORTED_CITIES.map(city => ({
+      name: city.name,
+      lat: city.search.center.lat,
+      lng: city.search.center.lng,
+      radius: city.search.radius
+    }))
   }
 ] as const;

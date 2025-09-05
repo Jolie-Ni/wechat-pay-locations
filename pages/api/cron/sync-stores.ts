@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Mark stale places as inactive
         const activePlaceIds = allPlaces.map(p => p.place_id);
-        await MerchantService.markStaleGooglePlaces(chainConfig.name, activePlaceIds);
+        await MerchantService.markStaleGooglePlaces(chainConfig.name, activePlaceIds, false);
         
         results.push({
           chain: chainConfig.name,

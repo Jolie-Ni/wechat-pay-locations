@@ -1,0 +1,12 @@
+{
+  "env": {
+    "BLAND_API_KEY": "@bland-api-key",
+    "REDIS_URL": "@redis-url"
+  },
+  "build": {
+    "env": {
+      "BLAND_API_KEY": "@bland-api-key",
+      "REDIS_URL": "@redis-url"
+    }
+  }
+}

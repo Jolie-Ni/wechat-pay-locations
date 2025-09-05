@@ -13,6 +13,35 @@ export interface City {
     lng: number;
   };
   zoom: number;
+  // Add search configuration
+  search: {
+    center: { lat: number; lng: number };
+    radius: number; // in meters
+  };
+}
+
+// Helper function to check if coordinates are within city bounds
+export function isWithinCityBounds(lat: number, lng: number, city: City): boolean {
+  return (
+    lat >= city.bounds.south &&
+    lat <= city.bounds.north &&
+    lng >= city.bounds.west &&
+    lng <= city.bounds.east
+  );
+}
+
+// Helper function to filter places by city bounds
+export function filterPlacesByCity<T extends { geometry: { location: { lat: number; lng: number } } }>(
+  places: T[],
+  city: City
+): T[] {
+  return places.filter(place => 
+    isWithinCityBounds(
+      place.geometry.location.lat,
+      place.geometry.location.lng,
+      city
+    )
+  );
 }
 
 export const SUPPORTED_CITIES: City[] = [
@@ -22,15 +51,19 @@ export const SUPPORTED_CITIES: City[] = [
     displayName: 'SF Bay Area',
     bounds: {
       north: 38.0,
-      south: 37.2,
-      east: -121.5,
-      west: -122.8
+      south: 37.1,
+      east: -121.7,
+      west: -122.6
     },
     center: {
-      lat: 37.6,
+      lat: 37.55,
       lng: -122.15
     },
-    zoom: 10
+    zoom: 10,
+    search: {
+      center: { lat: 37.55, lng: -122.15 }, // Use same center as map
+      radius: 65000 // 65km radius - covers Bay Area but excludes Sacramento
+    }
   },
   {
     id: 'los-angeles',
@@ -46,7 +79,11 @@ export const SUPPORTED_CITIES: City[] = [
       lat: 34.05,
       lng: -118.25
     },
-    zoom: 10
+    zoom: 10,
+    search: {
+      center: { lat: 34.05, lng: -118.25 },
+      radius: 70000 // 70km radius for LA metro area
+    }
   },
   {
     id: 'seattle',
@@ -62,7 +99,11 @@ export const SUPPORTED_CITIES: City[] = [
       lat: 47.6,
       lng: -122.3
     },
-    zoom: 11
+    zoom: 11,
+    search: {
+      center: { lat: 47.6, lng: -122.3 },
+      radius: 80000 // 80km radius for Seattle metro area
+    }
   },
   {
     id: 'new-york',
@@ -78,7 +119,11 @@ export const SUPPORTED_CITIES: City[] = [
       lat: 40.7,
       lng: -74.0
     },
-    zoom: 11
+    zoom: 11,
+    search: {
+      center: { lat: 40.7, lng: -74.0 },
+      radius: 90000 // 90km radius for NYC metro area
+    }
   }
 ];
 

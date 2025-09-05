@@ -1,0 +1,43 @@
+# Multi-stage build for worker
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production
+
+# Build the worker
+FROM base AS builder
+WORKDIR /app
+COPY . .
+COPY --from=deps /app/node_modules ./node_modules
+
+# Build the TypeScript
+RUN npm run type-check
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Copy the built application
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/pages ./pages
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/types ./types
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
+USER worker
+
+EXPOSE 3000
+
+CMD ["npx", "tsx", "pages/workers/wechat_verification_worker.ts"]

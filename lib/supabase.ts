@@ -103,7 +103,7 @@ export class MerchantService {
       .from('merchants')
       .upsert({
         source: 'google_places_api',
-        source_place_id: place.place_id,
+        place_id: place.place_id,
         name: place.name,
         address: place.address,
         coords: `POINT(${place.lng} ${place.lat})`,
@@ -111,7 +111,7 @@ export class MerchantService {
         last_synced_at: new Date().toISOString(),
         is_active: true
       }, {
-        onConflict: 'source_place_id'
+        onConflict: 'place_id'
       });
 
     if (error) {
@@ -120,13 +120,18 @@ export class MerchantService {
   }
 
   // Mark stale Google Places as inactive
-  static async markStaleGooglePlaces(chainName: string, activePlaceIds: string[]): Promise<void> {
+  static async markStaleGooglePlaces(chainName: string, activePlaceIds: string[], dryRun: boolean = false): Promise<void> {
+    if (dryRun) {
+      console.log(`[DRY RUN] Would mark stale places as inactive for ${chainName}`);
+      return;
+    }
+
     const { error } = await supabase
       .from('merchants')
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq('source', 'google_places_api')
       .eq('chain_name', chainName)
-      .not('source_place_id', 'in', `(${activePlaceIds.map(id => `"${id}"`).join(',')})`);
+      .not('place_id', 'in', `(${activePlaceIds.map(id => `"${id}"`).join(',')})`);
 
     if (error) {
       throw new Error(`Failed to mark stale places: ${error.message}`);
